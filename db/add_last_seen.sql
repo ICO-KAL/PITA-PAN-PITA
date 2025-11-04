@@ -1,0 +1,1 @@
+ALTER TABLE Usuarios ADD COLUMN last_seen TIMESTAMP NULL;
