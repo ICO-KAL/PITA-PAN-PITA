@@ -150,7 +150,7 @@ router.delete('/:id', authMiddleware, roleGuard('ADMIN'), async (req, res) => {
   }
 });
 
-// Eliminar usuario permanentemente (ADMIN) -> hard delete
+// Eliminar usuario permanentemente (ADMIN) -> hard delete con reorganización de IDs
 router.delete('/:id/permanent', authMiddleware, roleGuard('ADMIN'), async (req, res) => {
   try {
     const { id } = req.params;
@@ -165,9 +165,32 @@ router.delete('/:id/permanent', authMiddleware, roleGuard('ADMIN'), async (req, 
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
 
-    // Eliminar permanentemente
-    await db.query('DELETE FROM Usuarios WHERE id_usuario = ?', [id]);
-    res.json({ ok: true, message: `Usuario ${user.nombre} eliminado permanentemente` });
+    // Iniciar transacción para mantener integridad de datos
+    await db.query('START TRANSACTION');
+    
+    try {
+      // Eliminar el usuario
+      await db.query('DELETE FROM Usuarios WHERE id_usuario = ?', [id]);
+      
+      // Reorganizar IDs: Actualizar usuarios con ID mayor al eliminado
+      await db.query('UPDATE Usuarios SET id_usuario = id_usuario - 1 WHERE id_usuario > ?', [id]);
+      
+      // Resetear el auto_increment
+      const [[maxId]] = await db.query('SELECT MAX(id_usuario) as max_id FROM Usuarios');
+      const nextId = (maxId.max_id || 0) + 1;
+      await db.query(`ALTER TABLE Usuarios AUTO_INCREMENT = ?`, [nextId]);
+      
+      await db.query('COMMIT');
+      
+      res.json({ 
+        ok: true, 
+        message: `Usuario ${user.nombre} eliminado permanentemente y IDs reorganizados` 
+      });
+    } catch (txErr) {
+      // Si hay error, revertir cambios
+      await db.query('ROLLBACK');
+      throw txErr;
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
