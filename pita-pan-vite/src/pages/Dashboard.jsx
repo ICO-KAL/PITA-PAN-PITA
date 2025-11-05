@@ -7,6 +7,7 @@ export default function Dashboard() {
   const [pedidos, setPedidos] = useState([])
   const [pedidoDetalle, setPedidoDetalle] = useState(null)
   const [estadoFiltro, setEstadoFiltro] = useState('PENDIENTE')
+  const [adminTab, setAdminTab] = useState('PEDIDOS') // PEDIDOS | USUARIOS | CATALOGO | COMUNICACION
   const [mensajes, setMensajes] = useState({}) // { [id_pedido]: texto }
   const [{ role }] = useState(() => {
     const { role } = getAuth();
@@ -20,6 +21,11 @@ export default function Dashboard() {
   const [pagosPendientes, setPagosPendientes] = useState([])
   // Online users (ADMIN)
   const [online, setOnline] = useState({ empleados: [], clientes: [] })
+  // Usuarios (ADMIN)
+  const [users, setUsers] = useState([])
+  const [userForm, setUserForm] = useState({ nombre: '', email: '', password: '', rol: 'CAJERO', activo: true })
+  const [editingUserId, setEditingUserId] = useState(null)
+  const [savingUser, setSavingUser] = useState(false)
   // Productos (ADMIN)
   const [productos, setProductos] = useState([])
   const [categorias, setCategorias] = useState([])
@@ -44,6 +50,7 @@ export default function Dashboard() {
       fetchProductos()
       fetchCategorias()
       fetchOnline()
+      fetchUsers()
       const i = setInterval(fetchOnline, 30000)
       return () => clearInterval(i)
     }
@@ -98,6 +105,62 @@ export default function Dashboard() {
       const res = await api.get('/users/online')
       setOnline(res.data)
     } catch {}
+  }
+
+  // Usuarios (ADMIN)
+  async function fetchUsers(){
+    try{
+      const r = await api.get('/users')
+      setUsers(r.data)
+    }catch(err){
+      console.error(err)
+    }
+  }
+  function startEditUser(u){
+    setEditingUserId(u.id_usuario)
+    setUserForm({ nombre: u.nombre || '', email: u.email || '', password: '', rol: u.rol || 'CAJERO', activo: !!u.activo })
+  }
+  function resetUserForm(){
+    setEditingUserId(null)
+    setUserForm({ nombre: '', email: '', password: '', rol: 'CAJERO', activo: true })
+  }
+  async function createOrUpdateUser(e){
+    e.preventDefault()
+    if (!userForm.nombre || !userForm.email || (!editingUserId && !userForm.password)){
+      alert('Nombre, email y contraseña (al crear) son requeridos')
+      return
+    }
+    if (!['ADMIN','CAJERO','COCINERO'].includes(userForm.rol)){
+      alert('Rol inválido')
+      return
+    }
+    try{
+      setSavingUser(true)
+      if (editingUserId){
+        const payload = { nombre: userForm.nombre, email: userForm.email, rol: userForm.rol, activo: userForm.activo }
+        if (userForm.password) payload.password = userForm.password
+        await api.put(`/users/${editingUserId}`, payload)
+        alert('Usuario actualizado')
+      } else {
+        await api.post('/users', { nombre: userForm.nombre, email: userForm.email, password: userForm.password, rol: userForm.rol })
+        alert('Usuario creado')
+      }
+      resetUserForm()
+      fetchUsers()
+    }catch(err){
+      alert(err.response?.data?.error || 'No se pudo guardar el usuario')
+    }finally{
+      setSavingUser(false)
+    }
+  }
+  async function deleteUser(id){
+    if (!window.confirm('¿Desactivar este usuario?')) return
+    try{
+      await api.delete(`/users/${id}`)
+      fetchUsers()
+    }catch(err){
+      alert(err.response?.data?.error || 'No se pudo eliminar')
+    }
   }
 
   // Productos (ADMIN)
@@ -505,6 +568,65 @@ export default function Dashboard() {
                       </ul>
                     )}
                   </div>
+                </div>
+              </div>
+            )}
+
+            {role === 'ADMIN' && (
+              <div className="detalle-section">
+                <h3>Usuarios y roles</h3>
+                <form onSubmit={createOrUpdateUser} className="notif-form">
+                  <div className="form-grid">
+                    <input placeholder="Nombre" value={userForm.nombre} onChange={e=>setUserForm({...userForm, nombre:e.target.value})} />
+                    <input placeholder="Email" type="email" value={userForm.email} onChange={e=>setUserForm({...userForm, email:e.target.value})} />
+                    <select value={userForm.rol} onChange={e=>setUserForm({...userForm, rol:e.target.value})}>
+                      <option value="ADMIN">ADMIN</option>
+                      <option value="CAJERO">CAJERO</option>
+                      <option value="COCINERO">COCINERO</option>
+                    </select>
+                    <input placeholder={editingUserId? 'Nueva contraseña (opcional)':'Contraseña'} type="password" value={userForm.password} onChange={e=>setUserForm({...userForm, password:e.target.value})} />
+                  </div>
+                  <label style={{display:'flex', alignItems:'center', gap:8}}>
+                    <input type="checkbox" checked={userForm.activo} onChange={e=>setUserForm({...userForm, activo:e.target.checked})} /> Activo
+                  </label>
+                  <div style={{display:'flex', gap:8}}>
+                    <button type="submit" className="btn primary" disabled={savingUser}>{savingUser? 'Guardando...': (editingUserId? 'Actualizar usuario':'Crear usuario')}</button>
+                    {editingUserId && <button type="button" className="btn ghost" onClick={resetUserForm}>Cancelar</button>}
+                  </div>
+                </form>
+
+                <div className="notifs-list">
+                  {users.length===0? <p className="muted">Sin usuarios</p> : (
+                    <table className="productos-table">
+                      <thead>
+                        <tr>
+                          <th>#</th>
+                          <th>Nombre</th>
+                          <th>Email</th>
+                          <th>Rol</th>
+                          <th>Activo</th>
+                          <th>Última vez</th>
+                          <th>Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {users.map(u => (
+                          <tr key={u.id_usuario}>
+                            <td>{u.id_usuario}</td>
+                            <td>{u.nombre}</td>
+                            <td>{u.email}</td>
+                            <td>{u.rol}</td>
+                            <td>{u.activo? 'Sí':'No'}</td>
+                            <td>{u.last_seen? new Date(u.last_seen).toLocaleString() : '—'}</td>
+                            <td>
+                              <button className="btn ghost" onClick={()=>startEditUser(u)}>Editar</button>
+                              <button className="btn" onClick={()=>deleteUser(u.id_usuario)}>Desactivar</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
               </div>
             )}
