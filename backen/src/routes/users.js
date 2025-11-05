@@ -135,16 +135,39 @@ router.put('/:id', authMiddleware, roleGuard('ADMIN'), async (req, res) => {
   }
 });
 
-// Eliminar usuario (ADMIN) -> desactivar por seguridad
+// Desactivar usuario (ADMIN) -> soft delete
 router.delete('/:id', authMiddleware, roleGuard('ADMIN'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    // no permitir que un admin se desactive a sí mismo
+    if (Number(id) === Number(req.user.id_usuario)) {
+      return res.status(400).json({ error: 'No puedes desactivar tu propio usuario' });
+    }
+    await db.query('UPDATE Usuarios SET activo = 0 WHERE id_usuario = ?', [id]);
+    res.json({ ok: true, message: 'Usuario desactivado' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Eliminar usuario permanentemente (ADMIN) -> hard delete
+router.delete('/:id/permanent', authMiddleware, roleGuard('ADMIN'), async (req, res) => {
   try {
     const { id } = req.params;
     // no permitir que un admin se elimine a sí mismo
     if (Number(id) === Number(req.user.id_usuario)) {
       return res.status(400).json({ error: 'No puedes eliminar tu propio usuario' });
     }
-    await db.query('UPDATE Usuarios SET activo = 0 WHERE id_usuario = ?', [id]);
-    res.json({ ok: true });
+    
+    // Verificar que el usuario existe
+    const [[user]] = await db.query('SELECT nombre FROM Usuarios WHERE id_usuario = ?', [id]);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    // Eliminar permanentemente
+    await db.query('DELETE FROM Usuarios WHERE id_usuario = ?', [id]);
+    res.json({ ok: true, message: `Usuario ${user.nombre} eliminado permanentemente` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -331,18 +331,57 @@ describe('Users API - Pruebas Unitarias', () => {
         .expect(200);
 
       expect(response.body).toHaveProperty('ok', true);
+      expect(response.body).toHaveProperty('message', 'Usuario desactivado');
       expect(db.query).toHaveBeenCalledWith(
         'UPDATE Usuarios SET activo = 0 WHERE id_usuario = ?',
         [String(userId)]
       );
     });
 
-    it('debería rechazar auto-eliminación', async () => {
+    it('debería rechazar auto-desactivación', async () => {
       const response = await request(app)
         .delete(`/api/users/${mockAdminUser.id_usuario}`)
         .expect(400);
 
+      expect(response.body.error).toContain('No puedes desactivar tu propio usuario');
+    });
+  });
+
+  describe('DELETE /api/users/:id/permanent', () => {
+    it('debería eliminar un usuario permanentemente (hard delete)', async () => {
+      const userId = 3;
+      db.query
+        .mockResolvedValueOnce([[{ nombre: 'Usuario Test' }]])  // Get user
+        .mockResolvedValueOnce([{ affectedRows: 1 }]);  // Delete
+
+      const response = await request(app)
+        .delete(`/api/users/${userId}/permanent`)
+        .expect(200);
+
+      expect(response.body).toHaveProperty('ok', true);
+      expect(response.body.message).toContain('eliminado permanentemente');
+      expect(db.query).toHaveBeenCalledWith(
+        'DELETE FROM Usuarios WHERE id_usuario = ?',
+        [String(userId)]
+      );
+    });
+
+    it('debería rechazar auto-eliminación permanente', async () => {
+      const response = await request(app)
+        .delete(`/api/users/${mockAdminUser.id_usuario}/permanent`)
+        .expect(400);
+
       expect(response.body.error).toContain('No puedes eliminar tu propio usuario');
+    });
+
+    it('debería rechazar eliminar usuario inexistente', async () => {
+      db.query.mockResolvedValueOnce([[]]);  // User not found
+
+      const response = await request(app)
+        .delete('/api/users/999/permanent')
+        .expect(404);
+
+      expect(response.body.error).toContain('Usuario no encontrado');
     });
   });
 

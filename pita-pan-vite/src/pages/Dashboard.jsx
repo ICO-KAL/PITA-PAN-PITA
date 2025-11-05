@@ -157,6 +157,17 @@ export default function Dashboard() {
     if (!window.confirm('¿Desactivar este usuario?')) return
     try{
       await api.delete(`/users/${id}`)
+      alert('Usuario desactivado')
+      fetchUsers()
+    }catch(err){
+      alert(err.response?.data?.error || 'No se pudo desactivar')
+    }
+  }
+  async function permanentDeleteUser(id){
+    if (!window.confirm('⚠️ ADVERTENCIA: Esta acción eliminará permanentemente el usuario y no se puede deshacer.\n\n¿Estás seguro de continuar?')) return
+    try{
+      await api.delete(`/users/${id}/permanent`)
+      alert('Usuario eliminado permanentemente')
       fetchUsers()
     }catch(err){
       alert(err.response?.data?.error || 'No se pudo eliminar')
@@ -618,9 +629,10 @@ export default function Dashboard() {
                             <td>{u.rol}</td>
                             <td>{u.activo? 'Sí':'No'}</td>
                             <td>{u.last_seen? new Date(u.last_seen).toLocaleString() : '—'}</td>
-                            <td>
+                            <td style={{display:'flex', gap:'8px', flexWrap:'wrap'}}>
                               <button className="btn ghost" onClick={()=>startEditUser(u)}>Editar</button>
                               <button className="btn" onClick={()=>deleteUser(u.id_usuario)}>Desactivar</button>
+                              <button className="btn" style={{backgroundColor:'#d32f2f', color:'white'}} onClick={()=>permanentDeleteUser(u.id_usuario)} title="Eliminar permanentemente">🗑️ Eliminar</button>
                             </td>
                           </tr>
                         ))}
