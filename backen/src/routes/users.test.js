@@ -348,24 +348,29 @@ describe('Users API - Pruebas Unitarias', () => {
   });
 
   describe('DELETE /api/users/:id/permanent', () => {
-    it('debería eliminar un usuario permanentemente y reorganizar IDs', async () => {
+    it('debería eliminar un usuario permanentemente y reorganizar todos los IDs desde 1', async () => {
       const userId = 3;
+      const usuariosRestantes = [
+        { id_usuario: 1 },
+        { id_usuario: 2 },
+        { id_usuario: 4 },
+        { id_usuario: 5 }
+      ];
+      
       db.query
-        .mockResolvedValueOnce([[{ nombre: 'Usuario Test' }]])  // Get user
+        .mockResolvedValueOnce([[{ nombre: 'Usuario Test' }]])  // Get user to delete
         .mockResolvedValueOnce([{ affectedRows: 1 }])  // START TRANSACTION
         .mockResolvedValueOnce([{ affectedRows: 1 }])  // Delete user
-        .mockResolvedValueOnce([{ affectedRows: 2 }])  // Update IDs
-        .mockResolvedValueOnce([[{ max_id: 10 }]])  // Get MAX id
-        .mockResolvedValueOnce([{ affectedRows: 0 }])  // ALTER TABLE AUTO_INCREMENT
-        .mockResolvedValueOnce([{ affectedRows: 1 }]);  // COMMIT
+        .mockResolvedValueOnce([usuariosRestantes])  // Get all users ordered
+        .mockResolvedValue([{ affectedRows: 1 }]);  // Multiple UPDATEs and COMMIT
 
       const response = await request(app)
         .delete(`/api/users/${userId}/permanent`)
         .expect(200);
 
       expect(response.body).toHaveProperty('ok', true);
-      expect(response.body.message).toContain('eliminado permanentemente');
-      expect(response.body.message).toContain('IDs reorganizados');
+      expect(response.body.message).toContain('eliminado');
+      expect(response.body.message).toContain('del 1 al');
     });
 
     it('debería rechazar auto-eliminación permanente', async () => {

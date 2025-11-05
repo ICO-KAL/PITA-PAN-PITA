@@ -150,7 +150,7 @@ router.delete('/:id', authMiddleware, roleGuard('ADMIN'), async (req, res) => {
   }
 });
 
-// Eliminar usuario permanentemente (ADMIN) -> hard delete con reorganización de IDs
+// Eliminar usuario permanentemente (ADMIN) -> hard delete con reorganización completa de IDs
 router.delete('/:id/permanent', authMiddleware, roleGuard('ADMIN'), async (req, res) => {
   try {
     const { id } = req.params;
@@ -172,19 +172,38 @@ router.delete('/:id/permanent', authMiddleware, roleGuard('ADMIN'), async (req, 
       // Eliminar el usuario
       await db.query('DELETE FROM Usuarios WHERE id_usuario = ?', [id]);
       
-      // Reorganizar IDs: Actualizar usuarios con ID mayor al eliminado
-      await db.query('UPDATE Usuarios SET id_usuario = id_usuario - 1 WHERE id_usuario > ?', [id]);
+      // Reorganizar todos los IDs empezando desde 1
+      // Primero obtener todos los usuarios ordenados
+      const [usuarios] = await db.query('SELECT id_usuario FROM Usuarios ORDER BY id_usuario ASC');
       
-      // Resetear el auto_increment
-      const [[maxId]] = await db.query('SELECT MAX(id_usuario) as max_id FROM Usuarios');
-      const nextId = (maxId.max_id || 0) + 1;
+      // Renumerar todos los usuarios secuencialmente desde 1
+      for (let i = 0; i < usuarios.length; i++) {
+        const nuevoId = i + 1;
+        const viejoId = usuarios[i].id_usuario;
+        if (nuevoId !== viejoId) {
+          // Usar un ID temporal negativo para evitar conflictos de clave primaria
+          await db.query('UPDATE Usuarios SET id_usuario = ? WHERE id_usuario = ?', [-viejoId, viejoId]);
+        }
+      }
+      
+      // Ahora actualizar los IDs temporales a los finales
+      for (let i = 0; i < usuarios.length; i++) {
+        const nuevoId = i + 1;
+        const viejoId = usuarios[i].id_usuario;
+        if (nuevoId !== viejoId) {
+          await db.query('UPDATE Usuarios SET id_usuario = ? WHERE id_usuario = ?', [nuevoId, -viejoId]);
+        }
+      }
+      
+      // Resetear el auto_increment al siguiente valor
+      const nextId = usuarios.length + 1;
       await db.query(`ALTER TABLE Usuarios AUTO_INCREMENT = ?`, [nextId]);
       
       await db.query('COMMIT');
       
       res.json({ 
         ok: true, 
-        message: `Usuario ${user.nombre} eliminado permanentemente y IDs reorganizados` 
+        message: `Usuario ${user.nombre} eliminado. IDs reorganizados del 1 al ${usuarios.length}` 
       });
     } catch (txErr) {
       // Si hay error, revertir cambios
